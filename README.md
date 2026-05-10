@@ -58,6 +58,8 @@ Assume all the options below should be enabled when listed unless otherwise told
 
 TODO:
 
+* Consider Device Drivers -> Generic Driver Options -> Maintain a devtmpfs filesystem to mount at /dev (CONFIG_DEVTMPFS=y)
+
 ## Initial RAM file system
 
 This was built in a Linux container (Alpine 3.23.4) where a directory on the
@@ -73,6 +75,17 @@ simply run from the initial file system for now.
 (cd bin && ./busybox --list | xargs -n1 -P8 ln -s busybox)
 find . | cpio -o -H newc --owner=root:root > /host/bbmicrovm-initramfs
 ```
+
+Additional files will end up as:
+* [/etc/passw](https://man7.org/linux/man-pages/man5/passwd.5.html) - Define users (the password file)
+* /etc/hostname - Define the host name - this is read during `init` and set as the hostname of the machine.
+* /etc/group - Define groups
+* /etc/shadow - Define the passwords
+* /etc/fstab - Define describesfile systems that can be mounted (`mount -a`)
+* [/etc/resolv.conf](https://man7.org/linux/man-pages/man5/resolv.conf.5.html) - Define namespaces for resolving domain names.
+* /etc/inittab - configuration file for the init daemon (BusyBox's init).
+* /etc/init.d/rcS
+* /etc/init.d/S99setup-network
 
 ### Build
 ```sh
@@ -439,9 +452,24 @@ Now check the network is working by adding the following to the `mystart.sh`
 wget http://ifconfig.me/all -O -
 ```
 
+## Set-up SSH Server
+For this, the plan is to use [`dropbear`][dropbear] which can be statically
+compiled.
+```sh
+wget -O bin/dropbear https://static-binaries.gitlab.io/dropbear/dropbear-2019.78.x86_64-linux-android
+chmod +x bin/dropbear
+```
+
+Trying to run it inthe foreground to ensure we have everything working:
+* > setsockopt(4, SOL_IPV6, IPV6_TCLASS, [16], 4) = -1 ENOPROTOOPT (Protocol not available)
+* > openat(AT_FDCWD, "/var/run/dropbear.pid", O_WRONLY|O_CREAT|O_TRUNC, 0666) = -1 ENOENT (No such file or directory)
+  * This looks promatic.
+  * [`/var/run`][rhs-varrun] is for run-time variable data and has since been
+    moved to `/run` but Dropbear seems to be following the old ways.
+    * It is valid to implement /var/run as a symlink to /run.
+
+
 ## TODO:
-* Consider moving network setup to a rc script, i.e.
-  `/etc/init.d/S99setup-network` such that BusyBox's init script handles it.
 * Compare configuration settings to https://github.com/bsbernd/tiny-qemu-virtio-kernel-config
 * Consider building own busybox - that could have saved a lot of effort with
   the lack of `ifup`. It may be needed for the `hardshutdown` applet to cause
@@ -452,6 +480,8 @@ wget http://ifconfig.me/all -O -
 * Set-up GitHub Actions for building the file system and kernel.
 * Build BusyBox and Dropbear from source so there is no question about GPL
   conformance.
+* Consider addressing the following seen when running `dropbear` (SSH server).
+  > setsockopt(4, SOL_IPV6, IPV6_TCLASS, [16], 4) = -1 ENOPROTOOPT (Protocol not available)
 
 ## Future Kernel Options
 
@@ -499,7 +529,7 @@ logins.
 # Reminder
 
 Redistributing the kernel and the RAM disk is subject to the licences of
-the software that makes it up. For hoth the Linux kernel and
+the software that makes it up. For both the Linux kernel and
 [BusyBox](https://busybox.net/license.html) that is GNU General Public
 License, version 2
 
@@ -522,7 +552,8 @@ License, version 2
 [14]: https://www.kernelconfig.io/CONFIG_KVM_GUEST?q=&kernelversion=6.18.23&arch=x86
 [15]: https://www.qemu.org/docs/master/system/whpx.html
 [16]: https://www.kernelconfig.io/CONFIG_X86_MPPARSE
-
-[kernel-parameters]: https://www.kernel.org/doc/Documentation/admin-guide/kernel-parameters.rst
-
 [20]: https://blinry.org/tiny-linux/
+
+[rhs-varrun]: https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch05s13.html
+[kernel-parameters]: https://www.kernel.org/doc/Documentation/admin-guide/kernel-parameters.rst
+[dropbear]: https://matt.ucc.asn.au/dropbear/dropbear.html

@@ -32,7 +32,7 @@ start=$(pwd)
     || mkdir /busybox-root
 cd /busybox-root
 mkdir -p bin dev etc lib mnt proc sys tmp var home && \
-    mkdir -p etc/network
+    mkdir -p etc/network etc/init.d
 
 # Use local copy of busybox or download it.
 [ -f /work/busybox ] && cp /work/busybox bin/busybox ||
@@ -73,6 +73,7 @@ EOF
 
 echo Setup initial file system mounts - used by "mount -a"
 cat > etc/fstab << EOF
+#device         mount-point  type      options           dump  fsck order
 devtmpfs /dev devtmpfs defaults 0 0
 proc /proc proc defaults 0 0
 EOF
@@ -109,7 +110,7 @@ else
     if [ "$dhcp" = "yes" ]; then
         echo "  Configuring networking to use DHCP."
         rm -f etc/resolv.conf
-        cat > bin/qemu_net_start.sh << EOF
+        cat > etc/init.d/S90setup-network << EOF
 ip link set eth0 up
 udhcpc -i eth0
 ip addr show eth0 2>&1 > /dev/hvc0
@@ -117,7 +118,7 @@ EOF
         echo "ERROR: This option doesn't work"
         exit 5
     else
-        cat > bin/qemu_net_start.sh << EOF
+        cat > etc/init.d/S90setup-network << EOF
 #!/bin/busybox sh
 echo "Configuring networking..." > /dev/hvc0
 ip link set eth0 up
@@ -125,8 +126,11 @@ ip addr add 10.0.2.15/24 dev eth0
 ip route add default via 10.0.2.2
 ip link set eth0 mtu 1400
 EOF
-        #echo "nameserver 10.0.2.3" > etc/resolv.conf
-        echo "nameserver 8.8.8.8" > etc/resolv.conf
+        echo "nameserver 10.0.2.3" > etc/resolv.conf
+        # The above line will use QEMU DNS server to resolve names where
+        # the below line will use Google's.
+        # echo "nameserver 8.8.8.8" > etc/resolv.conf
+        chmod +x etc/init.d/S90setup-network
     fi
 fi
 
@@ -142,13 +146,7 @@ fi
 echo Define configuration for the init daemon - busybox init.
 # TODO: See if /dev/shm can be set-up in the etc/fstab instead.
 cat > etc/inittab << EOF
-::sysinit:/bin/mount -a
-::sysinit:/bin/hostname -F /etc/hostname
-::sysinit:/bin/mkdir /dev/shm
-::sysinit:/bin/mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm
-::sysinit:/bin/ip link set lo up
-::sysinit:/bin/sh /bin/qemu_net_start.sh
-::sysinit:/bin/sh /mystart.sh
+::sysinit:/bin/sh /etc/init.d/rcS
 ::ctrlaltdel:/bin/reboot
 ::shutdown:/bin/echo SHUTTING DOWN
 ::shutdown:/bin/umount -a -r
@@ -157,6 +155,22 @@ tty2::askfirst:/bin/getty 38400 tty2
 tty3::askfirst:/bin/getty 38400 tty3
 tty4::askfirst:/bin/getty 38400 tty4
 EOF
+
+echo Create initial script for init.
+cat > etc/init.d/rcS << EOF
+#!/bin/busybox sh
+/bin/mount -a
+/bin/mkdir /dev/shm
+/bin/mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm
+/bin/hostname -F /etc/hostname
+/bin/ip link set lo up
+# Execute all scripts in /etc/init.d starting with 'S'
+find /etc/init.d -maxdepth 1 -type f -name 'S??*' -exec {} \;
+[ -f /mystart.sh ] && /bin/sh /mystart.sh > /dev/hvc0
+EOF
+# TThere is a risk of find not being ordered.
+#   find /etc/init.d -maxdepth 1 -type f -name 'S??*' -exec {} \;
+chmod +x etc/init.d/rcS
 
 # The above lacks the following as the kernel, that I built doesn't include
 # support for the pseudo teletype terminal.
@@ -167,6 +181,11 @@ EOF
 echo bbmicrovm > etc/hostname
 
 # Optionally, create a /etc/motd which will appear when a user logins.
+
+# SSH server:
+[ ! -f bin/dropbear ] && \
+    wget -O bin/dropbear https://static-binaries.gitlab.io/dropbear/dropbear-2019.78.x86_64-linux-android
+chmod +x bin/dropbear
 
 # Build the image
 build()
