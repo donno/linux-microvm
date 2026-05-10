@@ -87,6 +87,9 @@ Additional files will end up as:
 * /etc/init.d/rcS
 * /etc/init.d/S99setup-network
 
+Additional symlinks
+* /var/run to /run
+
 ### Build
 ```sh
 podman run --rm -v .:/work --workdir /work public.ecr.aws/docker/library/alpine:3.22.4 create-bb-initframfs.sh
@@ -239,6 +242,31 @@ mount: mounting devpts on /dev/pts failed: No such device
       configured. I didn't write down which kernel configuration this was
       related to.
     * The other `/dev/pts` parts are also removed.
+
+
+```
+Inital error
+mount: mounting tmpfs on /dev/shm failed: Invalid argument
+
+Call through strace.
+mount("tmpfs", "/dev/shm", "tmpfs", MS_NOSUID|MS_NODEV|MS_SILENT, NULL) = -1 EINVAL (Invalid argument)
+```
+
+CONFIG_TMPFS is false but `grep -i tmpfs /proc/filesystems` included tempfs.
+
+* Filesystems -> Pseudo filesystems -> Tmpfs virtual memory file system support (former shm fs),
+* "Tmpfs POSIX Access Control Lists " was turned on as wel.
+
+That worked they now mounted.
+```
+~ # mount
+rootfs on / type rootfs (rw,size=246996k,nr_inodes=61749)
+devtmpfs on /dev type devtmpfs (rw,relatime,size=246996k,nr_inodes=61749,mode=755)
+proc on /proc type proc (rw,relatime)
+tmpfs on /run type tmpfs (rw,nosuid,nodev,relatime,size=50336k,mode=755)
+tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev,relatime)
+devpts on /dev/pts type devpts (rw,relatime,mode=600,ptmxmode=666)
+```
 
 ## Building Kernel
 
@@ -460,14 +488,17 @@ wget -O bin/dropbear https://static-binaries.gitlab.io/dropbear/dropbear-2019.78
 chmod +x bin/dropbear
 ```
 
-Trying to run it inthe foreground to ensure we have everything working:
+Trying to run it in the foreground to ensure we have everything working:
+* Added command `/bin/dropbear -F -R 2&1> /dev/hvc0` to `/mystartsh.sh`
 * > setsockopt(4, SOL_IPV6, IPV6_TCLASS, [16], 4) = -1 ENOPROTOOPT (Protocol not available)
 * > openat(AT_FDCWD, "/var/run/dropbear.pid", O_WRONLY|O_CREAT|O_TRUNC, 0666) = -1 ENOENT (No such file or directory)
-  * This looks promatic.
   * [`/var/run`][rhs-varrun] is for run-time variable data and has since been
     moved to `/run` but Dropbear seems to be following the old ways.
     * It is valid to implement /var/run as a symlink to /run.
-
+  * Due to the folder not existing it means it is unable to write the pid file
+    so it won't be able to detect if it is already running.
+* The server keys are not created until the first user tries to connect.
+  * This requires `/etc/dropbear/` to exist.
 
 ## TODO:
 * Compare configuration settings to https://github.com/bsbernd/tiny-qemu-virtio-kernel-config

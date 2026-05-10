@@ -31,7 +31,7 @@ start=$(pwd)
     && echo "Working directory already exists - reusing existing directory." \
     || mkdir /busybox-root
 cd /busybox-root
-mkdir -p bin dev etc lib mnt proc sys tmp var home && \
+mkdir -p bin dev etc lib mnt proc sys tmp var home run && \
     mkdir -p etc/network etc/init.d
 
 # Use local copy of busybox or download it.
@@ -49,6 +49,12 @@ fi
     || (cd bin && ./busybox --list | xargs -n1 -P8 ln -s busybox)
 
 cp bin/busybox init
+
+(cd var && [ ! -e run ] && ln -s /run run)
+# /var/run was superseded by /run and it is valid to implement /var/run as a
+# symlink to /run so that is what is being done.
+#
+# https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch05s13.html
 
 echo Setting up user and groups.
 cat > etc/passwd << EOF
@@ -76,6 +82,8 @@ cat > etc/fstab << EOF
 #device         mount-point  type      options           dump  fsck order
 devtmpfs /dev devtmpfs defaults 0 0
 proc /proc proc defaults 0 0
+tmpfs /run tmpfs rw,noatime,nosuid,nodev,mode=755 0 0
+# There is a symlinked from /var/run to /run configured.
 EOF
 
 dhcp=no
@@ -186,6 +194,7 @@ echo bbmicrovm > etc/hostname
 [ ! -f bin/dropbear ] && \
     wget -O bin/dropbear https://static-binaries.gitlab.io/dropbear/dropbear-2019.78.x86_64-linux-android
 chmod +x bin/dropbear
+mkdir -p etc/dropbear
 
 # Build the image
 build()
