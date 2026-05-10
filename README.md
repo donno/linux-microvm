@@ -11,7 +11,7 @@ Provided a starting point for using [QEMU][0]'s [microvm][1] machine type.
   `podman run --rm -v .:/work --workdir /work public.ecr.aws/docker/library/alpine:3.22.4 create-bb-initframfs.sh`
 * Build kernel - TODO
 * Run
-  `qemu-system-x86_64 -m 512m -append 'console=hvc0' -kernel .\linux6.18-virtio-donno-net.bzImage -M microvm,rtc=off,acpi=off,pic=on,pit=on -device virtio-serial-device -chardev stdio,id=virtiocon0,mux=on -device virtconsole,chardev=virtiocon0 -mon chardev=virtiocon0 -device virtio-net-device,netdev=net-uDC8gBXd0 -netdev user,id=net-uDC8gBXd0 -display none -initrd .\bbmicrovm-initramfs -accel whpx`
+  `qemu-system-x86_64 -m 512m -append 'console=hvc0 reboot=triple' -kernel .\linux6.18-virtio-donno-net.bzImage -M microvm,rtc=off,acpi=off,pic=on,pit=on -device virtio-serial-device -chardev stdio,id=virtiocon0,mux=on -device virtconsole,chardev=virtiocon0 -mon chardev=virtiocon0 -device virtio-net-device,netdev=net-uDC8gBXd0 -netdev user,id=net-uDC8gBXd0 -display none -initrd .\bbmicrovm-initramfs -accel whpx`
   * Tweak accel from whpx to kvm if on Linux instead of Windows.
 
 # Components
@@ -53,10 +53,10 @@ Assume all the options below should be enabled when listed unless otherwise told
 * Linux Kernel Configuration
   * 64-bit Kernel
   * Process type and features
-    * Symmetric multi-processing support  
+    * Symmetric multi-processing support
     * Linux Guest support
 
-TODO: 
+TODO:
 
 ## Initial RAM file system
 
@@ -97,7 +97,7 @@ The following command is for Microsoft Windows with the Hypervisor Platform
 host.
 
 ```sh
-qemu-system-x86_64 -smp 2 -m 512m -append 'init=/bin/init printk.time=1 earlyprintk=hvc0 console=hvc0 noapic nolapic acpi=off' -kernel .\linux6.18-virtio-donno-net.bzImage -M microvm,rtc=off,acpi=off,pic=on,pit=on,accel=whpx -device virtio-serial-device -chardev stdio,id=virtiocon0,mux=on -device virtconsole,chardev=virtiocon0 -mon chardev=virtiocon0 -device virtio-net-device,netdev=net-uDC8gBXd0 -netdev user,id=net-uDC8gBXd0,ipv6=off -display none -initrd bbmicrovm-initramfs
+qemu-system-x86_64 -smp 2 -m 512m -append 'printk.time=1 console=hvc0' -kernel .\linux6.18-virtio-donno-net.bzImage -M microvm,rtc=off,acpi=off,pic=on,pit=on,accel=whpx -device virtio-serial-device -chardev stdio,id=virtiocon0,mux=on -device virtconsole,chardev=virtiocon0 -mon chardev=virtiocon0 -device virtio-net-device,netdev=net-uDC8gBXd0 -netdev user,id=net-uDC8gBXd0,ipv6=off -display none -initrd bbmicrovm-initramfs
 ```
 
 For using the normal machine type, which is how some of it was tested
@@ -125,8 +125,8 @@ expects a normal emulated network card rather than the virtio-net based card.
     * `printk.time=1` - Adds the unmodified local hardware clock timestamp to
       printk messages. Essentially provides easy way to see the boot time.
     * `earlyprintk=hvc0 console=hvc0` - Use the virtual console for output.
-    * `noapic nolapic acpi=off` - Likely not needed for a custom kernel but can
-      be used by Alpine's linux-virt kernel to disable features that aren't required.
+    * `reboot=triple` - Informs the kernel to perform a triple fault which is
+      how QEMU's recommended way to trigger a guest-initiated shut down.
 * Set-up virtual console using the `virtio-serial-device` and output it to stdio.
     * The `mux=on` allows it to also be connected to QEMU monitor via the `-mon` argument.
     * By extension configure QEMU monitor to output to standard output.
@@ -408,15 +408,50 @@ This setting was under Processor type and features -> Linux guest support >
 [CONFIG_HYPERVISOR_GUEST][13] which enables basic hypervisor detection and
 platform setup.
 
+The expectation if this works is `cp /proc/interrupts /dev/hvc0` should show
+show IO-APIC next to the interrupt for the VirtIO network device. However, in my case
+it still stays XT-PIC, however after playing around it ended up saying IO-APIC.
+That said, when I turn off `pic` and `pit` on QEMU, there is no output
+from QEMU after it says the accelerator is operational
+
+The following should be in the output of `dmesg`:
+> IOAPIC[0]: apic_id 2, version 32, address 0xfec00000, GSI 0-23
+
+**Before**
+```
+  0:         29   XT-PIC      timer
+  2:          0   XT-PIC      cascade
+ 11:          2   XT-PIC      virtio1
+ 12:         15   XT-PIC      virtio0
+ ```
+**After**
+Removing `noapic nolapic acpi=off` from the kernel command line, the last
+option was doing nothing as it is being ignored anyway.
+```
+  0:         66  IO-APIC   2-edge      timer
+  2:          0   XT-PIC      cascade
+ 11:          2  IO-APIC  11-edge      virtio1
+ 12:         18  IO-APIC  12-edge      virtio0
+```
+
+Now check the network is working by adding the following to the `mystart.sh`
+```
+wget http://ifconfig.me/all -O -
+```
+
 ## TODO:
 * Consider moving network setup to a rc script, i.e.
   `/etc/init.d/S99setup-network` such that BusyBox's init script handles it.
 * Compare configuration settings to https://github.com/bsbernd/tiny-qemu-virtio-kernel-config
 * Consider building own busybox - that could have saved a lot of effort with
   the lack of `ifup`. It may be needed for the `hardshutdown` applet to cause
-  the VM to stop.
+  the VM to stop - this wasn't needed in the end enabling the APIC allowed
+  reboot to do the triple fault.
   * Alternative is try to use `sysctl kernel.reboot=1"` since I turned on the
    `sysctl` config. See https://docs.kernel.org/admin-guide/sysctl/kernel.html
+* Set-up GitHub Actions for building the file system and kernel.
+* Build BusyBox and Dropbear from source so there is no question about GPL
+  conformance.
 
 ## Future Kernel Options
 
@@ -486,6 +521,7 @@ License, version 2
 [13]: https://www.kernelconfig.io/CONFIG_HYPERVISOR_GUEST
 [14]: https://www.kernelconfig.io/CONFIG_KVM_GUEST?q=&kernelversion=6.18.23&arch=x86
 [15]: https://www.qemu.org/docs/master/system/whpx.html
+[16]: https://www.kernelconfig.io/CONFIG_X86_MPPARSE
 
 [kernel-parameters]: https://www.kernel.org/doc/Documentation/admin-guide/kernel-parameters.rst
 

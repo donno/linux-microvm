@@ -19,7 +19,7 @@
 # $ qemu-system-x86_64 -kernel .\linux-virt -initrd Cbb-initramfs --append "console=ttyS0" -serial stdio
 #
 # Run on Windows:
-# qemu-system-x86_64 -smp 2 -m 512m -append 'console=hvc0 noapic nolapic acpi=off' -kernel .\linux6.18-virtio-donno-net.bzImage -M microvm,rtc=off,acpi=off,pic=on,pit=on,accel=whpx -device virtio-serial-device -chardev stdio,id=virtiocon0,mux=on -device virtconsole,chardev=virtiocon0 -mon chardev=virtiocon0 -device virtio-net-device,netdev=net-uDC8gBXd0 -netdev user,id=net-uDC8gBXd0 -display none -initrd .\bb-initramfs
+# qemu-system-x86_64 -smp 2 -m 512m -append 'console=hvc0 reboot=triple' -kernel .\linux6.18-virtio-donno-net.bzImage -M microvm,rtc=off,acpi=off,pic=on,pit=on,accel=whpx -device virtio-serial-device -chardev stdio,id=virtiocon0,mux=on -device virtconsole,chardev=virtiocon0 -mon chardev=virtiocon0 -device virtio-net-device,netdev=net-uDC8gBXd0 -netdev user,id=net-uDC8gBXd0 -display none -initrd .\bb-initramfs
 #
 # Known limitations:
 # - The prebuilt binary of 1.35.0 results in: ifup: applet not found.
