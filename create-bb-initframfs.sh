@@ -57,11 +57,10 @@ if [ ! -f bin/busybox ]; then
 fi
 
 # Set-up symbolic links for the various utility programs to Busybox's applets.
+ln -s bin/busybox init
 [ -f bin/sh ] \
     && echo "BusyBox links are likely already in place." \
     || (cd bin && ./busybox --list | xargs -n1 -P8 ln -s busybox)
-
-cp bin/busybox init
 
 (cd var && [ ! -e run ] && ln -s /run run)
 # /var/run was superseded by /run and it is valid to implement /var/run as a
