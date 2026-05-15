@@ -92,6 +92,39 @@ Additional files will end up as:
 Additional symlinks
 * /var/run to /run
 
+### BusyBox + SSH
+The initial RAM file system came to 2,422,800 bytes uncompressed and
+1,244,123 bytes compressed or 4733 blocks. Coupled with the Linux kernel was
+2,892,800 bytes.
+
+On Windows host, /init started at 0.336004 seconds and ssh at 4 seconds.
+
+File listing (excluding directories)
+* /bin/dropbear
+* /bin/busybox (+ symlinks)
+* /home/donno/.ssh/authorized_keys
+* /etc/fstab
+* /etc/hostname
+* /etc/network
+* /etc/inittab
+* /etc/shadow
+* /etc/passwd
+* /etc/init.d
+* /etc/init.d/rcS
+* /etc/init.d/S90setup-network
+* /etc/init.d/S91setup-sshd
+* /etc/resolv.conf
+* /etc/group
+* /mystart.sh - This could have been removed.
+
+```sh
+# Linux
+ssh -o "UserKnownHostsFile /dev/null" -p 2222 root@localhost
+
+# Windows
+ssh -o "UserKnownHostsFile NUL" -p 2222 root@localhost
+```
+
 ### Build
 ```sh
 podman run --rm -v .:/work --workdir /work public.ecr.aws/docker/library/alpine:3.22.4 create-bb-initframfs.sh
@@ -561,10 +594,15 @@ Connecting and disconnecting:
   which is meant to also store uuser logins, logouts, system boots, and
   shutdowns. To view them you can type `last` in a shell.
 
+The final result was the initial RAM filesystem came to 2,422,800 bytes
+uncompressed containing and the Linux kernel was 2,892,800 bytes:
+* Busybox
+* Dropbear
+* Several small text files
 
-**The plan is the continue here**
-
-`ioctl(8, TIOCGWINSZ, 0x7fff31e04a28)    = -1 EINVAL (Invalid argument)`
+For Linux there were some kernel models that are unused:
+* Wireguard
+* i8042: No controller found
 
 ## Valkey
 Instead of hosting SSH considered what if the plan was to run an appliance.
