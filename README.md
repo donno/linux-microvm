@@ -18,6 +18,8 @@ Provided a starting point for using [QEMU][0]'s [microvm][1] machine type.
 
 * Linux Kernel
 * Initial RAM file system ([initramfs][2])
+  * Busybox - Shell, shell tools and init system.
+  * Dropbear - SSH Server
 * QEMU
 
 ## Linux Kernel
@@ -489,7 +491,7 @@ chmod +x bin/dropbear
 ```
 
 Trying to run it in the foreground to ensure we have everything working:
-* Added command `/bin/dropbear -F -R 2&1> /dev/hvc0` to `/mystartsh.sh`
+* Added command `/bin/dropbear -F -R 2>&1 > /dev/hvc0` to `/mystart.sh`
 * > setsockopt(4, SOL_IPV6, IPV6_TCLASS, [16], 4) = -1 ENOPROTOOPT (Protocol not available)
 * > openat(AT_FDCWD, "/var/run/dropbear.pid", O_WRONLY|O_CREAT|O_TRUNC, 0666) = -1 ENOENT (No such file or directory)
   * [`/var/run`][rhs-varrun] is for run-time variable data and has since been
@@ -499,6 +501,182 @@ Trying to run it in the foreground to ensure we have everything working:
     so it won't be able to detect if it is already running.
 * The server keys are not created until the first user tries to connect.
   * This requires `/etc/dropbear/` to exist.
+* Can't SSH as root with a password as that is disallowed by default, so the
+  set-up a normal user account for that.
+* This is resulting in
+  > Login attempt for nonexistent user
+  * The user can be logged in interactive.*
+  * Log message comes here: https://github.com/mkj/dropbear/blob/672f5963a525c167dc6c103b86d2aa1aceb1a3ec/src/svr-auth.c#L262
+  * Confirming permissions:
+    ```
+    drwxr-xr-x    3 root     root           0 May 12  2026 .
+    drwxr-xr-x   14 root     root           0 Jan  1 00:00 ..
+    drwxr-xr-x    3 donno    users          0 May 12  2026 donno
+    total 0
+    drwxr-xr-x    3 donno    users          0 May 12  2026 .
+    drwxr-xr-x    3 root     root           0 May 12  2026 ..
+    drwx------    2 donno    users          0 May 12  2026 .ssh
+    total 4K
+    drwx------    2 donno    users          0 May 12  2026 .
+    drwxr-xr-x    3 donno    users          0 May 12  2026 ..
+    -rw-------    1 donno    users        462 May 12  2026 authorized_keys
+    ```
+  * Tried adding /etc/shell.
+
+I took a break here and did the Valey part.
+The problem seemed to be with the version of dropbear I was using.
+Updating to version 2026.91, gave progress.
+
+```
+[53] Jan 01 00:00:00 Not backgrounding
+[54] Jan 01 00:00:08 Child connection from 10.0.2.2:50289
+[54] Jan 01 00:00:08 Generated hostkey /etc/dropbear/dropbear_ecdsa_host_key, fingerprint is SHA256:hyX6N9so323/GHx7zhbdRUJYcdRoPimsNAChDQk8acI
+[54] Jan 01 00:00:09 Pubkey auth succeeded for 'donno' with ssh-rsa key SHA256:sfHZhHKkXNMnspPTa2eZSkZ2/XPdYEGUeuoUfvtjFlA from 10.0.2.2:50289
+[54] Jan 01 00:00:09 pty_allocate: openpty: No such file or directory
+[54] Jan 01 00:00:09 No pty was allocated, couldn't execute
+[54] Jan 01 00:00:09 Exit (donno) from <10.0.2.2:50289>: Error reading: Connection reset by peer
+```
+
+* The INSTALL.md for dropbear happens to metion about `openpty`.
+  > If `openpty()` is being used (`HAVE_OPENPTY` defined in `config.h`) and it fails, you can try compiling with `--disable-openpty`.
+* I suspect this may need CONFIG_UNIX98_PTYS from Device Drivers -> Character devices -> Unix98 PTY support, however
+that option seemed to have disappeared after I disabled the expert mode and
+the setting is enabled on the config.
+* The problem was there is no `/dev/pts`, needed to add
+  `mount -t devpts devpts /dev/pts -o gid=5,mode=620`.
+
+Connecting and disconnecting:
+```
+[58] Jan 01 00:00:06 lastlog_perform_login: Couldn't stat /var/log/lastlog: No such file or directory
+[58] Jan 01 00:00:06 lastlog_openseek: /var/log/lastlog is not a file or directory!
+[58] Jan 01 00:00:06 wtmp_write: problem writing /dev/null/wtmp: Not a directory
+[57] Jan 01 00:00:32 wtmp_write: problem writing /dev/null/wtmp: Not a directory
+[57] Jan 01 00:00:32 Exit (donno) from <10.0.2.2:51233>: Disconnect received
+```
+
+* When building Dropbear there is an option to disable lastlog
+  (`--disable-lastlog`) which could be the simpler option. The idea of this VM
+  was short lived / not persistent so the log wouldn't be all taht useful anyway.
+* When building Dropbear there is an option to disable wtemp (`--disable-wtmp`)
+  which is meant to also store uuser logins, logouts, system boots, and
+  shutdowns. To view them you can type `last` in a shell.
+
+
+**The plan is the continue here**
+
+`ioctl(8, TIOCGWINSZ, 0x7fff31e04a28)    = -1 EINVAL (Invalid argument)`
+
+## Valkey
+Instead of hosting SSH considered what if the plan was to run an appliance.
+
+In this case, an existing container image will be used
+```sh
+wget https://github.com/opencontainers/umoci/releases/download/v0.6.0/umoci.linux.amd64
+wget https://github.com/lework/skopeo-binary/releases/download/v1.20.0/skopeo-linux-amd64
+chmod +x umoci.linux.amd64 skopeo-linux-amd64
+./skopeo-linux-amd64 --insecure-policy copy docker://docker.io/valkey/valkey:9.0.0 oci:valkey:9.0.0
+./umoci.linux.amd64 unpack --image valkey:9.0.0 /busybox-root/opt/valkey
+```
+
+To the `/mystart.sh` script added:
+```sh
+echo Running valkey > /dev/hvc0
+chroot /opt/valkey/rootfs ./usr/local/bin/valkey-server 2>&1 > /dev/hvc0
+reboot
+```
+
+Re-built the image and ran it.
+
+```
+[    0.980043]     TERM=linux
+Hello from mystart.sh
+Running valkey
+The futex facility returned an unexpected error code.
+Aborted
+```
+
+* The much larger initial RAM file system has made it take quite a bit longer
+  to boot.
+* The program fails as when compiling the kernel, the futex feature wasn't
+  enabled.
+    * Found under  Linux Kernel Configuration -> General setup ->
+      Configure standard kernel features (expert users) -> Enable futex support
+    * [CONFIG_FUTEX][17].
+    * This was hard to find, I then discovered you can search in menuconfig by
+      typing / and a search box appears.
+* If this did work, then would added `hostfwd=tcp::2229-:6379` to map 6379
+  within the VM to port 2229 on the host.
+
+next one:
+```
+46:M 01 Jan 1970 00:00:01.180 * oO0OoO0OoO0Oo Valkey is starting oO0OoO0OoO0Oo
+46:M 01 Jan 1970 00:00:01.184 * Valkey version=9.0.0, bits=64, commit=00000000, modified=0, pid=46, just started
+46:M 01 Jan 1970 00:00:01.184 # Warning: no config file specified, using the default config. In order to specify a config file use ./usr/local/bin/valkey-server /path/to/valkey.conf
+46:M 01 Jan 1970 00:00:01.184 * Increased maximum number of open files to 10032 (it was originally set to 1024).
+46:M 01 Jan 1970 00:00:01.184 * monotonic clock: POSIX clock_gettime
+46:M 01 Jan 1970 00:00:01.184 # Failed creating the event loop. Error message: 'Function not implemented'
+```
+
+Where the fucntion not implemetned is:
+```
+epoll_create(1024)                      = -1 ENOSYS (Function not implemented)
+```
+
+Aftert sorting out futex wasn't enabled and now this onem I realised it was
+because an expert user section was enabled, rather than try to find the config
+that enables it, I simply went back and turned off the expert user setting
+which keeps Futex support enabled (as turning the expert setting on essentially
+turns of Futex).
+
+```
+Hello from mystart.sh
+Running valkey
+53:M 01 Jan 1970 00:00:01.040 * oO0OoO0OoO0Oo Valkey is starting oO0OoO0OoO0Oo
+53:M 01 Jan 1970 00:00:01.040 * Valkey version=9.0.0, bits=64, commit=00000000, modified=0, pid=53, just started
+53:M 01 Jan 1970 00:00:01.040 # Warning: no config file specified, using the default config. In order to specify a config file use ./usr/local/bin/valkey-server /path/to/valkey.conf
+53:M 01 Jan 1970 00:00:01.040 * Increased maximum number of open files to 10032 (it was originally set to 1024).
+53:M 01 Jan 1970 00:00:01.040 * monotonic clock: POSIX clock_gettime
+                .+^+.
+            .+#########+.
+        .+########+########+.           Valkey 9.0.0 (00000000/0) 64 bit
+    .+########+'     '+########+.
+ .########+'     .+.     '+########.    Running in standalone mode
+ |####+'     .+#######+.     '+####|    Port: 6379
+ |###|   .+###############+.   |###|    PID: 53
+ |###|   |#####*'' ''*#####|   |###|
+ |###|   |####'  .-.  '####|   |###|
+ |###|   |###(  (@@@)  )###|   |###|          https://valkey.io
+ |###|   |####.  '-'  .####|   |###|
+ |###|   |#####*.   .*#####|   |###|
+ |###|   '+#####|   |#####+'   |###|
+ |####+.     +##|   |#+'     .+####|
+ '#######+   |##|        .+########'
+    '+###|   |##|    .+########+'
+        '|   |####+########+'
+             +#########+'
+                '+v+'
+
+53:M 01 Jan 1970 00:00:01.044 * Server initialized
+53:M 01 Jan 1970 00:00:01.044 * Ready to accept connections tcp
+```
+
+I was then able to connect on `valkey-cli.exe -p 2229`.
+
+The last time from `printk` was 0.988045 seconds and given Valkey is outputting
+the same time with each message it seems to suggest the actual kernel
+start time to was 1.04 seconds.
+
+
+### Future
+Where to go next from this:
+- Build a `ext3` filesystem image of the contents of the container so it can be
+  provided to system separated and mounted to `/app_root`.
+- Going too far into containers, i.e. enable cgroups and namespaces to allow
+  container to work such that `runc` does as per my previous experiment.
+  However, at this point then this is trying to reinvent `boot2container`.
+  * It might be nice to explore setting up a Linux kernel targetting microvm
+    for use by boot2container. There is already a minimised for QEMU
+    [kernel][21] produced but haven't checked if it works with `microvm`.
 
 ## TODO:
 * Compare configuration settings to https://github.com/bsbernd/tiny-qemu-virtio-kernel-config
@@ -583,7 +761,9 @@ License, version 2
 [14]: https://www.kernelconfig.io/CONFIG_KVM_GUEST?q=&kernelversion=6.18.23&arch=x86
 [15]: https://www.qemu.org/docs/master/system/whpx.html
 [16]: https://www.kernelconfig.io/CONFIG_X86_MPPARSE
+[17]: https://www.kernelconfig.io/CONFIG_FUTEX
 [20]: https://blinry.org/tiny-linux/
+[21]: https://gitlab.freedesktop.org/gfx-ci/boot2container/-/releases/v0.10.0/downloads/linux-x86_64-qemu
 
 [rhs-varrun]: https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch05s13.html
 [kernel-parameters]: https://www.kernel.org/doc/Documentation/admin-guide/kernel-parameters.rst
