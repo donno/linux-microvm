@@ -5,14 +5,15 @@
 
 VERSION=6.18
 echo Install packages required to configure and build kernel
-apk add --no-cache alpine-sdk flex bison gawk bc ncurses-dev elfutils-dev git linux-headers || exit 1
+apk add --no-cache alpine-sdk flex bison gawk bc ncurses-dev elfutils-dev linux-headers perl git || exit 1
 # flex - the build system generates lexical analysers during build.
 # bison - the build system generates parsers during build
 # gawk - needs it.
 # ncurses-dev - needed by "make menuconfig"
 # elfutils-dev - needed for gelf.h
-# git - for cloning the Linux kernel. The alternative would be to use a tar
 # linux-headers - for "asm/types.h" and other headers required.
+# perl - for perl used by PERLASM
+# git - for cloning the Linux kernel. The alternative would be to use a tar
 
 echo Cloning Linux kernel repository
 git clone --depth 1 --branch "v$VERSION" https://github.com/torvalds/linux /linux || exit 1
