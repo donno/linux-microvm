@@ -1,0 +1,23 @@
+name: Build Linux Kernel
+run-name: ${{ github.actor }} is building Linux Kernel on GitHub
+on: [push]
+jobs:
+  Build-Linux-Kernel:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3.22
+    steps:
+      - run: echo "Job running on ${{ runner.os }} because ${{ github.event_name }} event from ${{ github.repository }} at ${{ github.ref }}"
+      - name: Check out repository code
+        uses: actions/checkout@v6
+      - run: sh ./make-kernel.sh
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: kernel
+          path: |
+            microvm.bzImage
+            microvm.config
+            microvm.System.map
+
+# TODO: Make a 'release' version which publishes the file as a release.
