@@ -13,7 +13,7 @@ jobs:
       - run: echo "Job running on ${{ runner.os }} because ${{ github.event_name }} event from ${{ github.repository }} at ${{ github.ref }}"
       - name: Check out repository code
         uses: actions/checkout@v6
-      - run: sh ./make-dropbear.sh ${{ github.workspace }}
+      - run: sh ./make-dropbear.sh ..
       - name: Upload distributions
         uses: actions/upload-artifact@v7
         with:
