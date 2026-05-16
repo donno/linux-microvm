@@ -1,7 +1,10 @@
 #!/bin/sh
-# Build the Dropbox
+# Build the Dropbear by Matt Johnston.
+# Dropbear homepage: https://matt.ucc.asn.au/dropbear/dropbear.html
 #
-# usage: make-dropbear.sh [target-directory]
+# Script usage: usage: make-dropbear.sh [target-directory]
+# The target-directory controls where the resulting dropbear executable will
+# be copied.
 #
 # Consider adding MULTI=1, to build both client and server in same executable.
 
