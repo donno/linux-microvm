@@ -1,10 +1,9 @@
 name: Build Dropbear
 run-name: ${{ github.actor }} is building dropbear on GitHub
-on:
-  push:
-    paths:
-      - './make-dropbear.sh'
-      - './.github/workflows/dropbear.yml'
+on: [push]
+#    paths:
+#      - './make-dropbear.sh'
+#      - './.github/workflows/dropbear.yml'
 jobs:
   Build-Dropbear:
     runs-on: ubuntu-latest
