@@ -49,6 +49,7 @@ then
     exit 2
 fi
 
-[ $# -eq 1 ] && cp ./dropbear "$1/dropbear" && echo "copied dropbear to $1"
+[ $# -eq 1 ] && cp ./dropbear "$1/dropbear" && \
+    echo "copied dropbear to $1" || exit 3
 
 echo "dropbear is ready"

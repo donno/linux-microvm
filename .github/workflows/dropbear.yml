@@ -1,25 +1,25 @@
 name: Build Dropbear
 run-name: ${{ github.actor }} is building dropbear on GitHub
-on: [push]
+on:
+  push:
+    paths:
+      - './make-dropbear.sh'
+      - './.github/workflows/dropbear.yml'
 jobs:
   Build-Dropbear:
     runs-on: ubuntu-latest
     container:
       image: alpine:3.22
     steps:
-      - run: echo "?? The job was automatically triggered by a ${{ github.event_name }} event."
-      - run: echo "?? This job is now running on a ${{ runner.os }} server hosted by GitHub!"
-      - run: echo "?? The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
+      - run: echo "Job running on ${{ runner.os }} because ${{ github.event_name }} event from ${{ github.repository }} at ${{ github.ref }}"
       - name: Check out repository code
         uses: actions/checkout@v6
-        run: |
-          ls ${{ github.workspace }}
-      - run: sh ./make-dropbear.sh bin/dropbear
+      - run: sh ./make-dropbear.sh ${{ github.workspace }}
       - name: Upload distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dropbear
-          path: bin/dropbear
+          path: dropbear
           archive: false
 
 # TODO: Make a 'release' version which publishes the file as a release.
